@@ -244,6 +244,11 @@
 	Editor.defaultCompressed = false;
 
 	/**
+	 * Specifies if data should be compressed internally. Default is false.
+	 */
+	Editor.internalCompression = urlParams['internal-compression'] == '1';
+
+	/**
 	 * Specifies if XML files should be compressed. Default is true.
 	 */
 	Editor.oneDriveInlinePicker = (window.urlParams != null && window.urlParams['inlinePicker'] == '0') ? false : true;
@@ -386,52 +391,45 @@
         {
         	return mxUtils.getValue(state.style, 'sketch', (urlParams['rough'] == '1') ? '1' : '0') == '1';
         }},
-		{name: mxConstants.STYLE_SHADOW, dispName: mxResources.get('Shadow'), type: 'bool', defVal: false, isVisible: function(state, format)
-		{
-			return state.containsLabel;
-		}, onChange: function(graph, value)
-		{
-			// Toggles text shadow together with shape shadow
-			graph.setCellStyles(mxConstants.STYLE_TEXT_SHADOW, value, graph.getSelectionCells());
-		}},
-		{name: mxConstants.STYLE_TEXT_SHADOW, dispName: 'Text Shadow', type: 'bool', defVal: false, isVisible: function(state, format)
-		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
-		}},
 		{name: mxConstants.STYLE_SHADOWCOLOR, dispName: 'Shadow Color', type: 'color', getDefaultValue: function()
 		{
 			return mxConstants.SHADOWCOLOR;
 		}, isVisible: function(state, format)
 		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
+			return mxUtils.getValue(state.style, mxConstants.STYLE_SHADOW, '0') == '1' ||
+				mxUtils.getValue(state.style, mxConstants.STYLE_TEXT_SHADOW, '0') == '1';
 		}},
 		{name: mxConstants.STYLE_SHADOW_OPACITY, dispName: 'Shadow Opacity', type: 'int', min: 0, max: 100, getDefaultValue: function()
 		{
 			return mxConstants.SHADOW_OPACITY * 100;
 		}, isVisible: function(state, format)
 		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
+			return mxUtils.getValue(state.style, mxConstants.STYLE_SHADOW, '0') == '1' ||
+				mxUtils.getValue(state.style, mxConstants.STYLE_TEXT_SHADOW, '0') == '1';
 		}},
 		{name: mxConstants.STYLE_SHADOW_OFFSET_X, dispName: 'Shadow Offset X', type: 'int', getDefaultValue: function()
 		{
 			return mxConstants.SHADOW_OFFSET_X;
 		}, isVisible: function(state, format)
 		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
+			return mxUtils.getValue(state.style, mxConstants.STYLE_SHADOW, '0') == '1' ||
+				mxUtils.getValue(state.style, mxConstants.STYLE_TEXT_SHADOW, '0') == '1';
 		}},
 		{name: mxConstants.STYLE_SHADOW_OFFSET_Y, dispName: 'Shadow Offset Y', type: 'int', getDefaultValue: function()
 		{
 			return mxConstants.SHADOW_OFFSET_Y;
 		}, isVisible: function(state, format)
 		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
+			return mxUtils.getValue(state.style, mxConstants.STYLE_SHADOW, '0') == '1' ||
+				mxUtils.getValue(state.style, mxConstants.STYLE_TEXT_SHADOW, '0') == '1';
 		}},
 		{name: mxConstants.STYLE_SHADOW_BLUR, dispName: 'Shadow Blur', type: 'int', min: 0, getDefaultValue: function()
 		{
 			return mxConstants.SHADOW_BLUR;
 		}, isVisible: function(state, format)
 		{
-			return mxUtils.getValue(state.style, 'shadow', '0') == '1';
+			return mxUtils.getValue(state.style, mxConstants.STYLE_SHADOW, '0') == '1' ||
+				mxUtils.getValue(state.style, mxConstants.STYLE_TEXT_SHADOW, '0') == '1';
 		}}
 	];
 	
@@ -1673,16 +1671,21 @@
 	 */
 	Editor.getDiagramNodeXml = function(diagramNode)
 	{
-		var text = mxUtils.getTextContent(diagramNode);
+		var text = mxUtils.getNodeValue(diagramNode);
 		var xml = null;
 		
 		if (text.length > 0)
 		{
 			xml = Graph.decompress(text);
 		}
-		else if (diagramNode.firstChild != null)
+		else
 		{
-			xml = mxUtils.getXml(diagramNode.firstChild);
+			var temp = diagramNode.getElementsByTagName('mxGraphModel');
+
+			if (temp != null && temp.length > 0)
+			{
+				xml = mxUtils.getXml(temp[0]);
+			}
 		}
 		
 		return xml;
@@ -3180,9 +3183,12 @@
 										next();
 									}
 								}
-								else if (src != null)
+								else
 								{
-									img.setAttribute(srcAttr, src);
+									if (src != null)
+									{
+										img.setAttribute(srcAttr, src);
+									}
 
 									next();
 								}
@@ -5219,6 +5225,7 @@
 				row.appendChild(td);
 				td = document.createElement('td');
 				td.className = 'gePropRowCell';
+				td.setAttribute('title', (pValue != null) ? pValue : mxResources.get('none'));
 				
 				if (pType == 'color')
 				{
@@ -5290,9 +5297,25 @@
 					var inp = document.createElement('input');
 					inp.setAttribute('readonly', '');
 					inp.value = pValue;
-					inp.style.width = '96px';
 					inp.style.borderWidth = '0px';
-					td.appendChild(inp);
+
+					if (pName == 'id')
+					{
+						inp.style.width = '190px';
+						inp.style.position = 'relative';
+						inp.style.right = '6px';
+						inp.style.float = 'right';
+						inp.style.background = 'none';
+						inp.style.textAlign = 'right';
+						row.firstChild.setAttribute('colspan', '2');
+						inp.setAttribute('title', pValue);
+						row.firstChild.appendChild(inp);
+					}
+					else
+					{
+						inp.style.width = '96px';
+						td.appendChild(inp);
+					}
 				}
 				else
 				{
@@ -5493,7 +5516,8 @@
 			//Add it to top (always)
 			if (cellId != null && !hideId)
 			{
-				grid.appendChild(createPropertyRow('id', mxUtils.htmlEntities(cellId), {dispName: 'ID', type: 'readOnly'}, true, false));
+				grid.appendChild(createPropertyRow('id', mxUtils.htmlEntities(cellId),
+					{dispName: 'id', type: 'readOnly'}, true, false));
 			}
 			
 			for (var key in properties)
@@ -5799,14 +5823,17 @@
 					
 					picker.innerText = '';
 					
-					for (var i = 0; i < colorsets.length; i++)
+					if (colorsets != null)
 					{
-						if (i > 0 && mxUtils.mod(i, 4) == 0)
+						for (var i = 0; i < colorsets.length; i++)
 						{
-							mxUtils.br(picker);
+							if (i > 0 && mxUtils.mod(i, 4) == 0)
+							{
+								mxUtils.br(picker);
+							}
+							
+							addButton(colorsets[i]);
 						}
-						
-						addButton(colorsets[i]);
 					}
 				});
 
@@ -6894,7 +6921,7 @@
 	
 	Graph.prototype.getSvg = function(background, scale, border, nocrop, crisp,
 		ignoreSelection, showText, imgExport, linkTarget, hasShadow,
-		incExtFonts, theme, exportType, cells, noCssClass)
+		incExtFonts, theme, exportType, cells, noCssClass, disableLinks)
 	{
 		var temp = null;
 		var tempFg = null;
@@ -7385,6 +7412,11 @@
 
 						if (action.tags.hidden != null)
 						{
+							if (hidden == null)
+							{
+								hidden = [];
+							}
+							
 							hidden = hidden.concat(action.tags.hidden);
 						}
 
