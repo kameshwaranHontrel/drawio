@@ -101,7 +101,7 @@ App = function(editor, container, lightbox)
 			
 			if (wnd == null || wnd === undefined)
 			{
-				this.showDialog(new PopupDialog(this, url, pre, fallback).container, 320, 160, true, true);
+				this.showDialog(new PopupDialog(this, url, pre, fallback).container, 320, 140, true, true);
 			}
 			else if (pre != null)
 			{
@@ -332,7 +332,7 @@ App.pluginRegistry = {'4xAKTrabTpTzahoLthkwPNUn': 'plugins/explore.js',
 	'tr': 'plugins/trello.js', 'f5': 'plugins/rackF5.js',
 	'webcola': 'plugins/webcola/webcola.js', 'rnd': 'plugins/random.js',
 	'page': 'plugins/page.js', 'gd': 'plugins/googledrive.js',
-	'tags': 'plugins/tags.js'};
+	'tags': 'plugins/tags.js', 'iehub';'plugins/iehub/iehub.js'};
 
 App.publicPlugin = [
 	'ex',
@@ -350,7 +350,8 @@ App.publicPlugin = [
 	'anon',
 	'webcola',
 //	'rnd', 'page', 'gd',
-	'tags'
+	'tags',
+    'iehub'
 ];
 
 /**
@@ -1080,8 +1081,6 @@ App.main = function(callback, createUi)
 				}
 				else
 				{
-					// Note: Lazy loading stencils.min.js in viewer.diagrams.net
-					// has no impact as stencils.min.js is pre-cached in PWA
 					mxStencilRegistry.allowEval = false;
 					App.loadScripts(['js/shapes-14-6-5.min.js', 'js/stencils.min.js',
 						'js/extensions.min.js'], realMain, function(e)
@@ -2902,60 +2901,53 @@ App.prototype.load = function()
 		// Checks if we're running in embedded mode
 		if (urlParams['embed'] != '1')
 		{
-			try
+			if (this.spinner.spin(document.body, mxResources.get('starting')))
 			{
-				if (this.spinner.spin(document.body, mxResources.get('starting')))
+				try
 				{
-					try
-					{
-						this.stateArg = (urlParams['state'] != null && this.drive != null) ?
-							JSON.parse(decodeURIComponent(urlParams['state'])) : null;
-					}
-					catch (e)
-					{
-						// ignores invalid state args
-					}
-					
-					this.editor.graph.setEnabled(this.getCurrentFile() != null);
-					
-					// Passes the userId from the state parameter to the client
-					if ((window.location.hash == null || window.location.hash.length == 0) &&
-						this.drive != null && this.stateArg != null && this.stateArg.userId != null)
-					{
-						this.drive.setUserId(this.stateArg.userId);
-					}
+					this.stateArg = (urlParams['state'] != null && this.drive != null) ?
+						JSON.parse(decodeURIComponent(urlParams['state'])) : null;
+				}
+				catch (e)
+				{
+					// ignores invalid state args
+				}
+				
+				this.editor.graph.setEnabled(this.getCurrentFile() != null);
+				
+				// Passes the userId from the state parameter to the client
+				if ((window.location.hash == null || window.location.hash.length == 0) &&
+					this.drive != null && this.stateArg != null && this.stateArg.userId != null)
+				{
+					this.drive.setUserId(this.stateArg.userId);
+				}
 
-					// Legacy support for fileId parameter which is moved to the hash tag
-					if (urlParams['fileId'] != null)
+				// Legacy support for fileId parameter which is moved to the hash tag
+				if (urlParams['fileId'] != null)
+				{
+					window.location.hash = 'G' + urlParams['fileId'];
+					window.location.search = this.getSearch(['fileId']);
+				}
+				else
+				{
+					// Asynchronous or disabled loading of client
+					if (this.drive == null)
 					{
-						window.location.hash = 'G' + urlParams['fileId'];
-						window.location.search = this.getSearch(['fileId']);
+						if (this.mode == App.MODE_GOOGLE)
+						{
+							this.mode = null;
+						}
+						
+						this.start();
 					}
 					else
 					{
-						// Asynchronous or disabled loading of client
-						if (this.drive == null)
+						this.loadGapi(mxUtils.bind(this, function()
 						{
-							if (this.mode == App.MODE_GOOGLE)
-							{
-								this.mode = null;
-							}
-							
 							this.start();
-						}
-						else
-						{
-							this.loadGapi(mxUtils.bind(this, function()
-							{
-								this.start();
-							}));
-						}
+						}));
 					}
 				}
-			}
-			catch (e)
-			{
-				this.handleError(e);
 			}
 		}
 		else
@@ -3666,12 +3658,17 @@ App.prototype.checkDrafts = function()
 					}), mxUtils.bind(this, function(index, success)
 					{
 						index = (index != '') ? index : 0;
-						this.removeDatabaseItem(drafts[index].key);
 						
-						if (success != null)
+						// Discard draft
+						this.confirm(mxResources.get('areYouSure'), null, mxUtils.bind(this, function()
 						{
-							success();
-						}
+							this.removeDatabaseItem(drafts[index].key);
+							
+							if (success != null)
+							{
+								success();
+							}
+						}), mxResources.get('no'), mxResources.get('yes'));
 					}), null, null, null, (drafts.length > 1) ? drafts : null);
 					this.showDialog(dlg.container, 640, 480, true, false, mxUtils.bind(this, function(cancel)
 					{
@@ -5475,24 +5472,8 @@ App.prototype.loadFile = function(id, sameWindow, file, success, force)
 								{
 									return peerChar + id;
 								};
-
-								var hash = '#' + currentFile.getHash();
-
-								try
-								{
-									var obj = this.getHashObject();
-
-									if (obj != null && !mxUtils.isEmptyObject(obj))
-									{
-										hash = hash + '#' + encodeURIComponent(JSON.stringify(obj));
-									}
-								}
-								catch (e)
-								{
-									// ignore
-								}
-
-								window.location.replace(hash);
+								
+								window.location.hash = '#' + currentFile.getHash();
 							}
 							else if (file == currentFile && file.getMode() == null)
 							{
@@ -5575,7 +5556,7 @@ App.prototype.loadFile = function(id, sameWindow, file, success, force)
 	else if (currentFile != null && !sameWindow)
 	{
 		this.showDialog(new PopupDialog(this, this.getUrl() + '#' + id,
-			null, fn).container, 320, 160, true, true);
+			null, fn).container, 320, 140, true, true);
 	}
 	else
 	{
